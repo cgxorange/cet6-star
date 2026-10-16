@@ -177,30 +177,63 @@ Star.litCount = function () {
   return n;
 };
 
-/* ---------- 词库加载：三源回退（jsDelivr → fastly → GitHub raw） ---------- */
+/* ---------- 词库加载：三源并行竞速（谁先成功用谁，单源 30 秒超时） ---------- */
 const WORD_URLS = [
   'https://cdn.jsdelivr.net/gh/exam-data/CETVocabulary@main/cet_full_list.json',
   'https://fastly.jsdelivr.net/gh/exam-data/CETVocabulary@main/cet_full_list.json',
   'https://raw.githubusercontent.com/exam-data/CETVocabulary/main/cet_full_list.json'
 ];
+const SRC_NAMES = ['jsDelivr', 'fastly', 'GitHub'];
+const FETCH_TIMEOUT = 30000;
 
-async function fetchRows(onMsg) {
-  let lastErr = null;
-  for (let i = 0; i < WORD_URLS.length; i++) {
-    try {
-      onMsg('正在拉取词库 · 源 ' + (i + 1) + '/' + WORD_URLS.length + ' …');
-      const res = await fetch(WORD_URLS[i]);
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      const rows = data['四六级词汇词频排序表'] || [];
-      if (!rows.length) throw new Error('数据为空');
-      return rows;
-    } catch (e) { lastErr = e; }
-  }
-  throw new Error('词库加载失败：' + ((lastErr && lastErr.message) || '网络异常'));
+function fetchOne(url) {
+  const ctl = ('AbortController' in window) ? new AbortController() : null;
+  let timer = null;
+  if (ctl) timer = setTimeout(function () { ctl.abort(); }, FETCH_TIMEOUT);
+  return fetch(url, ctl ? { signal: ctl.signal } : undefined).then(function (res) {
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  }).then(function (data) {
+    if (timer) clearTimeout(timer);
+    const rows = (data && data['四六级词汇词频排序表']) || [];
+    if (!rows.length) throw new Error('数据为空');
+    return rows;
+  }, function (e) {
+    if (timer) clearTimeout(timer);
+    if (e && (e.name === 'AbortError' || /abort/i.test(e.message || ''))) throw new Error('超时');
+    throw e;
+  });
 }
 
-/* 筛选六级标星词（已在源数据中按真题词频降序），并精简体积 */
+function fetchRows(onMsg) {
+  onMsg('正在拉取词库（3 路并行加速）…');
+  return new Promise(function (resolve, reject) {
+    let pending = WORD_URLS.length, done = false;
+    const errs = [];
+    const slowTimer = setTimeout(function () {
+      if (!done) onMsg('网络较慢，仍在并行拉取…');
+    }, 8000);
+
+    WORD_URLS.forEach(function (url, i) {
+      fetchOne(url).then(function (rows) {
+        if (done) return;
+        done = true;
+        clearTimeout(slowTimer);
+        resolve(rows);
+      }, function (e) {
+        pending--;
+        errs.push(SRC_NAMES[i] + '：' + ((e && (e.message || e.name)) || '未知错误'));
+        if (pending === 0 && !done) {
+          done = true;
+          clearTimeout(slowTimer);
+          reject(new Error('词库加载失败 → ' + errs.join('；')));
+        }
+      });
+    });
+  });
+}
+
+/* 筛选六级标星词（源数据已按真题词频降序），并精简体积 */
 function buildList(rows) {
   const six = [], all = [];
   for (const r of rows) {
