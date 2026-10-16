@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+<meta name="theme-color" content="#05070f" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="词汇星图" />
+<title>词汇星图 · CET-6</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<!-- 启动遮罩 -->
+<div id="boot">
+  <div class="boot-star">✦</div>
+  <p id="bootMsg">正在加载词库…</p>
+</div>
+
+<!-- ===================== 视图：星图 ===================== -->
+<section class="view active" id="view-map">
+  <canvas id="sky"></canvas>
+  <header class="hud">
+    <div class="hud-stat"><b id="litCount">0</b><span>点亮</span></div>
+    <div class="hud-stat"><b id="dueCount">0</b><span>待复习</span></div>
+    <div class="hud-stat"><b id="todayCount">0</b><span>今日</span></div>
+  </header>
+  <p class="map-hint" id="mapHint">拖动平移 · 双指缩放 · 点星星看词</p>
+  <div id="starCard" class="star-card" hidden>
+    <div class="sc-head">
+      <h3 id="scWord">word</h3>
+      <button class="icon-btn" id="scClose">✕</button>
+    </div>
+    <p id="scDef" class="sc-def">释义</p>
+    <p id="scMeta" class="sc-meta">尚未学习</p>
+    <button class="btn primary slim" id="scStudy">学这个词</button>
+  </div>
+</section>
+
+<!-- ===================== 视图：学习 ===================== -->
+<section class="view" id="view-learn">
+  <header class="learn-top">
+    <div class="bar"><i id="batchFill"></i></div>
+    <span id="batchLabel">待机</span>
+  </header>
+
+  <!-- 待机面板 -->
+  <div class="pane" id="paneIdle">
+    <div class="idle-star">✦</div>
+    <h2 id="idleTitle">来点亮几颗星</h2>
+    <p class="dim" id="idleSummary">正在统计…</p>
+    <button class="btn primary big" id="btnStart">开始一批</button>
+    <p class="tiny dim" id="idleNext"></p>
+  </div>
+
+  <!-- 学习卡片 -->
+  <div class="pane" id="paneCard" hidden>
+    <div class="card">
+      <div class="word-row">
+        <h1 id="bigWord" class="big-word">word</h1>
+        <button class="icon-btn" id="btnSpeak" title="发音">🔊</button>
+      </div>
+      <div class="chips">
+        <span class="chip" id="wordTag">新词</span>
+        <span class="chip ghost" id="wordFreq"></span>
+      </div>
+
+      <!-- 新词：自评三档 -->
+      <div id="selfRate" class="rate-row">
+        <button class="btn rate know"    data-r="know">认识</button>
+        <button class="btn rate fuzzy"   data-r="fuzzy">模糊</button>
+        <button class="btn rate unknown" data-r="unknown">不认识</button>
+      </div>
+
+      <!-- 复习：选择题 -->
+      <div id="quizBox" hidden>
+        <p class="quiz-q">选出正确释义</p>
+        <div class="options" id="options"></div>
+      </div>
+
+      <!-- 复习：拼写题 -->
+      <div id="spellBox" hidden>
+        <p class="spell-def" id="spellDef"></p>
+        <div class="spell-row">
+          <input id="spellInput" type="text" autocomplete="off" autocapitalize="off"
+                 autocorrect="off" spellcheck="false" placeholder="听音拼写…" />
+          <button class="btn" id="btnSpellSubmit">检查</button>
+        </div>
+      </div>
+
+      <!-- 详情：释义 + AI 例句 -->
+      <div id="detail" hidden>
+        <p class="def" id="defText"></p>
+        <div class="ai-zone" id="aiZone"></div>
+      </div>
+
+      <!-- 判定反馈 -->
+      <div id="verdict" class="verdict" hidden></div>
+
+      <button class="btn primary big" id="btnNext" hidden>继续</button>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 视图：设置 ===================== -->
+<section class="view" id="view-settings">
+  <div class="set-wrap">
+    <h2>设置</h2>
+
+    <div class="set-group">
+      <label class="set-label">DeepSeek API Key</label>
+      <input id="cfgKey" type="password" placeholder="sk-…（只存在这台设备上）" autocomplete="off" />
+      <label class="set-label">AI 例句模式</label>
+      <div class="seg" id="cfgModel">
+        <button class="seg-btn" data-m="deep">🧠 深度思考</button>
+        <button class="seg-btn" data-m="fast">⚡ 快速</button>
+      </div>
+      <p class="tiny dim">深度思考（deepseek-reasoner）例句更贴六级语境，但生成较慢——例句会在你看卡时后台生成、永久缓存，不阻塞学习。</p>
+    </div>
+
+    <div class="set-group">
+      <label class="set-label">每日新词（参考值，不强制）</label>
+      <select id="cfgDaily">
+        <option value="8">8 个</option>
+        <option value="12">12 个</option>
+        <option value="15">15 个</option>
+        <option value="20">20 个</option>
+        <option value="30">30 个</option>
+      </select>
+      <label class="set-label">发音口音</label>
+      <select id="cfgAccent">
+        <option value="en-US">美音</option>
+        <option value="en-GB">英音</option>
+      </select>
+    </div>
+
+    <div class="set-group">
+      <h3>数据</h3>
+      <div class="btn-row">
+        <button class="btn" id="btnExport">导出进度</button>
+        <button class="btn" id="btnImport">导入进度</button>
+        <button class="btn danger" id="btnReset">清空进度</button>
+      </div>
+      <input id="importFile" type="file" accept=".json" hidden />
+      <p class="tiny dim" id="statLine">—</p>
+    </div>
+
+    <div class="set-group">
+      <p class="tiny dim">词库数据来自开源项目 exam-data/CETVocabulary（CC BY-NC-SA 4.0），按四六级真题词频排序，仅供个人学习。<br>记忆模型：半衰期间隔重复 · 本应用无打卡、无排行、无惩罚。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 底部导航 ===================== -->
+<nav id="tabs">
+  <button class="tab active" data-view="map"><i>✦</i><span>星图</span></button>
+  <button class="tab" data-view="learn"><i>◉</i><span>学习</span></button>
+  <button class="tab" data-view="settings"><i>⚙</i><span>设置</span></button>
+</nav>
+
+<script src="js/core.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/starmap.js"></script>
+<script src="js/learn.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
