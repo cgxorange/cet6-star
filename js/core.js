@@ -18,35 +18,29 @@ const LS = {
 };
 
 const DEFAULT_CFG = {
-  key: '',                      // DeepSeek API Key（只存本机）
-  model: 'deep',                // deep = deepseek-reasoner（深度思考）；fast = deepseek-chat
-  daily: 12,                    // 每日新词参考值
-  accent: 'en-US',              // 发音口音
+  key: '',
+  model: 'deep',
+  daily: 12,
+  accent: 'en-US',
   base: 'https://api.deepseek.com/v1'
 };
 
-/* ---------- 半衰期模型 ----------
-   stage：0 = 待学/掉队；1..9 的半衰期依次为
-   12h, 1d, 2d, 4d, 8d, 16d, 32d, 64d, 120d  */
+/* ---------- 半衰期模型 ---------- */
 const HL = [4 * HOUR, 12 * HOUR, DAY, 2 * DAY, 4 * DAY, 8 * DAY, 16 * DAY, 32 * DAY, 64 * DAY, 120 * DAY];
-
 Star.hlFor = function (s) { return HL[Math.max(0, Math.min(MAX_STAGE, s | 0))]; };
 
 /* ---------- 小工具 ---------- */
 Star.$ = function (id) { return document.getElementById(id); };
-
 Star.esc = function (s) {
   return String(s).replace(/[&<>"']/g, function (c) {
     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
   });
 };
-
 Star.hashStr = function (s) {
   let h = 5381;
   for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
   return h;
 };
-
 Star.fmtHL = function (ms) {
   if (!ms || ms <= 0) return '—';
   if (ms < HOUR) return Math.max(1, Math.round(ms / 60000)) + ' 分钟';
@@ -56,7 +50,7 @@ Star.fmtHL = function (ms) {
   return Math.round(d / 30) + ' 个月';
 };
 
-/* ---------- 语音（浏览器自带 TTS，免费） ---------- */
+/* ---------- 语音 ---------- */
 Star.speak = function (text) {
   try {
     if (!('speechSynthesis' in window)) return;
@@ -67,8 +61,6 @@ Star.speak = function (text) {
     speechSynthesis.speak(u);
   } catch (e) {}
 };
-
-/* iOS 需要一次用户手势才能自动朗读，点击按钮时先"解锁" */
 Star.unlockTTS = function () {
   try {
     if (!('speechSynthesis' in window)) return;
@@ -80,16 +72,16 @@ Star.unlockTTS = function () {
 
 /* ---------- 全局状态 ---------- */
 Star.cfg = Object.assign({}, DEFAULT_CFG);
-Star.prog = {};      // { 单词: { s: 等级, t: 上次作答时间 } }
-Star.aiCache = {};   // { 单词: {sentence, translation, collocation, tip, ts, m} }
+Star.prog = {};
+Star.aiCache = {};
 Star.day = null;
-Star.words = [];     // 学习词表 [{w:单词, d:释义, f:词频}]，按词频降序
+Star.words = [];
 
 Star.saveCfg = function () { LS.set(K.cfg, Star.cfg); };
 Star.saveProg = function () { LS.set(K.prog, Star.prog); };
 Star.saveAiCache = function () { LS.set(K.ai, Star.aiCache); };
 
-/* ---------- 今日统计（只看"今天来学了什么"，不做打卡惩罚） ---------- */
+/* ---------- 今日统计 ---------- */
 function todayStr() {
   const d = new Date();
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -111,7 +103,6 @@ Star.strength = function (p) {
   const el = Date.now() - p.t;
   return Math.max(0, Math.min(1, 1 - el / Star.hlFor(p.s)));
 };
-
 Star.stateOf = function (w) {
   const p = Star.prog[w];
   if (!p || (p.s || 0) < 1) return { lit: false, s: 0, k: 0, due: false, next: 0 };
@@ -125,8 +116,7 @@ Star.stateOf = function (w) {
   };
 };
 
-/* ---------- 核心：一次作答 → 更新半衰期 ----------
-   v：'know'认识 / 'fuzzy'模糊 / 'unknown'不认识 / 'right'答对 / 'wrong'答错  */
+/* ---------- 作答 → 更新半衰期 ---------- */
 Star.rate = function (word, v) {
   const old = Star.prog[word];
   const wasNew = !old || (old.s || 0) === 0;
@@ -134,7 +124,7 @@ Star.rate = function (word, v) {
 
   if (v === 'know' || v === 'right') p.s = Math.min(MAX_STAGE, (p.s || 0) + 1);
   else if (v === 'fuzzy') p.s = (p.s || 0) > 0 ? p.s : 1;
-  else p.s = Math.max(0, (p.s || 0) - 2);   // 不认识 / 答错：掉两档
+  else p.s = Math.max(0, (p.s || 0) - 2);
 
   p.t = Date.now();
   Star.prog[word] = p;
@@ -146,7 +136,7 @@ Star.rate = function (word, v) {
 };
 
 /* ---------- 队列 ---------- */
-Star.newList = function () {          // 未点亮的词，按词频从高到低
+Star.newList = function () {
   const out = [];
   for (const it of Star.words) {
     const p = Star.prog[it.w];
@@ -154,8 +144,7 @@ Star.newList = function () {          // 未点亮的词，按词频从高到低
   }
   return out;
 };
-
-Star.dueList = function () {          // 已到期的词，逾期越久越靠前
+Star.dueList = function () {
   const now = Date.now(), out = [];
   for (const it of Star.words) {
     const p = Star.prog[it.w];
@@ -167,7 +156,6 @@ Star.dueList = function () {          // 已到期的词，逾期越久越靠前
   out.sort((a, b) => a.due - b.due);
   return out.map(x => x.it);
 };
-
 Star.litCount = function () {
   let n = 0;
   for (const it of Star.words) {
@@ -177,13 +165,16 @@ Star.litCount = function () {
   return n;
 };
 
-/* ---------- 词库加载：三源并行竞速（谁先成功用谁，单源 30 秒超时） ---------- */
+/* ---------- 词库加载 ----------
+   优先：你自己 fork 的仓库（同域名，最稳最快；未部署好会自动跳过）
+   兜底：三个 CDN。全部并行竞速，谁先成功用谁，单源 30 秒超时 */
 const WORD_URLS = [
+  'https://cgxorange.github.io/CETVocabulary/cet_full_list.json',
   'https://cdn.jsdelivr.net/gh/exam-data/CETVocabulary@main/cet_full_list.json',
   'https://fastly.jsdelivr.net/gh/exam-data/CETVocabulary@main/cet_full_list.json',
   'https://raw.githubusercontent.com/exam-data/CETVocabulary/main/cet_full_list.json'
 ];
-const SRC_NAMES = ['jsDelivr', 'fastly', 'GitHub'];
+const SRC_NAMES = ['自己的仓库', 'jsDelivr', 'fastly', 'GitHub'];
 const FETCH_TIMEOUT = 30000;
 
 function fetchOne(url) {
@@ -206,7 +197,7 @@ function fetchOne(url) {
 }
 
 function fetchRows(onMsg) {
-  onMsg('正在拉取词库（3 路并行加速）…');
+  onMsg('正在拉取词库（并行加速）…');
   return new Promise(function (resolve, reject) {
     let pending = WORD_URLS.length, done = false;
     const errs = [];
@@ -233,7 +224,7 @@ function fetchRows(onMsg) {
   });
 }
 
-/* 筛选六级标星词（源数据已按真题词频降序），并精简体积 */
+/* 筛选六级标星词（源数据已按真题词频降序） */
 function buildList(rows) {
   const six = [], all = [];
   for (const r of rows) {
@@ -245,7 +236,6 @@ function buildList(rows) {
     const mark = r['六级'];
     if (mark !== null && mark !== undefined && mark !== '' && mark !== false && mark !== 0) six.push(rec);
   }
-  // 正常应有一千多个六级标星词；若异常偏少则保底取全表高频段
   return six.length >= 600 ? six : all.slice(0, 2500);
 }
 
